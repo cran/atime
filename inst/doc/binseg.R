@@ -75,11 +75,15 @@ if(require(ggplot2)){
 
 ## -----------------------------------------------------------------------------
 best.refs <- best.list$ref[each.sign.rank==1]
-time.refs <- best.refs[unit=="seconds"]
+(time.refs <- best.refs[unit=="seconds"])
 
 ## -----------------------------------------------------------------------------
 ref.color <- "red"
-if(require(ggplot2)){
+## try() to avoid CRAN error 'from' must be a finite number, on
+## Flavors: r-devel-linux-x86_64-debian-gcc, r-release-linux-x86_64,
+## due to https://github.com/r-lib/scales/issues/307
+(seconds.dt <- best.list$meas[unit=="seconds"])
+try(if(require(ggplot2)){
   gg <- ggplot()+
     geom_line(aes(
       N, reference, group=fun.name),
@@ -88,7 +92,7 @@ if(require(ggplot2)){
     geom_line(aes(
       N, empirical),
       size=1,
-      data=best.list$meas[unit=="seconds"])+
+      data=seconds.dt)+
     scale_x_log10()+
     scale_y_log10("median line, min/max band")+
     facet_wrap("expr.name")+
@@ -103,7 +107,7 @@ if(require(ggplot2)){
   }else{
     gg
   }
-}
+})
 
 ## -----------------------------------------------------------------------------
 my.refs <- list(
@@ -113,8 +117,8 @@ my.refs <- list(
 my.best <- atime::references_best(atime.list, fun.list=my.refs)
 
 ## -----------------------------------------------------------------------------
-my.best.time.refs <- my.best$ref[unit=="seconds"]
-if(require(ggplot2)){
+(my.best.time.refs <- my.best$ref[unit=="seconds"])
+try(if(require(ggplot2)){
   gg <- ggplot()+
     geom_line(aes(
       N, reference, group=fun.name),
@@ -123,7 +127,7 @@ if(require(ggplot2)){
     geom_line(aes(
       N, empirical),
       size=1,
-      data=best.list$meas[unit=="seconds"])+
+      data=seconds.dt)+
     scale_x_log10()+
     scale_y_log10("median line, min/max band")+
     facet_wrap("expr.name")+
@@ -138,5 +142,5 @@ if(require(ggplot2)){
   }else{
     gg
   }
-}
+})
 

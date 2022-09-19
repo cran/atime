@@ -1,19 +1,27 @@
 ## ----setup, include = FALSE---------------------------------------------------
 knitr::opts_chunk$set(
   collapse = TRUE,
-  comment = "#>"
+  comment = "#>",
+  eval = TRUE
 )
 
 ## -------------------------------------------------------------------------------------------------
 old.opt <- options(width=100)
-tdir <- tempfile()
-dir.create(tdir)
-git2r::clone("https://github.com/tdhock/binsegRcpp", tdir)
+pkg.path <- tempfile()
+dir.create(pkg.path)
+git2r::clone("https://github.com/tdhock/binsegRcpp", pkg.path)
 
 ## -------------------------------------------------------------------------------------------------
-run.atime.versions <- function(TDIR){
+tmp.lib.path <- tempfile()
+dir.create(tmp.lib.path)
+lib.path.vec <- c(tmp.lib.path, .libPaths())
+.libPaths(lib.path.vec)
+
+## -------------------------------------------------------------------------------------------------
+run.atime.versions <- function(PKG.PATH, LIB.PATH){
+  if(!missing(LIB.PATH)).libPaths(LIB.PATH)
   atime::atime_versions(
-    pkg.path=TDIR,
+    pkg.path=PKG.PATH,
     N=2^seq(2, 20),
     setup={
       max.segs <- as.integer(N/2)
@@ -28,9 +36,9 @@ run.atime.versions <- function(TDIR){
 ## -------------------------------------------------------------------------------------------------
 atime.ver.list <- if(requireNamespace("callr")){
   requireNamespace("atime")
-  callr::r(run.atime.versions, list(tdir))
+  callr::r(run.atime.versions, list(pkg.path, lib.path.vec))
 }else{
-  run.atime.versions(tdir)
+  run.atime.versions(pkg.path)
 }
 names(atime.ver.list$measurements)
 atime.ver.list$measurements[, .(N, expr.name, min, median, max, kilobytes)]
@@ -74,7 +82,7 @@ if(require(ggplot2)){
 
 ## -------------------------------------------------------------------------------------------------
 (ver.list <- atime::atime_versions_exprs(
-  pkg.path=tdir,
+  pkg.path=pkg.path,
   expr=binsegRcpp::binseg_normal(data.vec, max.segs),
   cv="908b77c411bc7f4fcbcf53759245e738ae724c3e",
   "rm unord map"="dcd0808f52b0b9858352106cc7852e36d7f5b15d",
@@ -88,7 +96,8 @@ expr.list <- c(ver.list, if(requireNamespace("changepoint")){
 })
 
 ## -------------------------------------------------------------------------------------------------
-run.atime <- function(ELIST){
+run.atime <- function(ELIST, LIB.PATH){
+  if(!missing(LIB.PATH)).libPaths(LIB.PATH)
   atime::atime(
     N=2^seq(2, 20),
     setup={
@@ -99,10 +108,12 @@ run.atime <- function(ELIST){
 }
 atime.list <- if(requireNamespace("callr")){
   requireNamespace("atime")
-  callr::r(run.atime, list(expr.list))
+  callr::r(run.atime, list(expr.list, lib.path.vec))
 }else{
   run.atime(expr.list)
 }
+
+## -------------------------------------------------------------------------------------------------
 atime.list$measurements[, .(N, expr.name, median, kilobytes)]
 
 ## -------------------------------------------------------------------------------------------------

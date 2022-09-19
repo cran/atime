@@ -20,10 +20,14 @@ atime.list <- atime::atime(
   times=5)
 plot(atime.list)
 
-best.list <- atime::references_best(atime.list)
-ref.dt <- best.list$ref[each.sign.rank==1]
+## -----------------------------------------------------------------------------
+(best.list <- atime::references_best(atime.list))
+(ref.dt <- best.list$ref[each.sign.rank==1])
 library(data.table)
-if(require(ggplot2)){
+## try() to avoid CRAN error 'from' must be a finite number, on
+## https://www.stats.ox.ac.uk/pub/bdr/Rblas/README.txt, due to
+## https://github.com/r-lib/scales/issues/307
+try(if(require(ggplot2)){
   hline.df <- with(atime.list, data.frame(seconds.limit, unit="seconds"))
   gg <- ggplot()+
     theme_bw()+
@@ -61,7 +65,7 @@ if(require(ggplot2)){
   }else{
     gg
   }
-}
+})
 
 ## -----------------------------------------------------------------------------
 result.wide <- dcast(atime.list$meas, N ~ expr.name, value.var="result")
