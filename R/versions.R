@@ -52,81 +52,99 @@ atime_versions_install <- function(Package, pkg.path, new.Package.vec, sha.vec, 
     new.path <- file.path(tdir, basename(pkg.path))
     unlink(new.path, recursive=TRUE, force=TRUE)
     file.copy(pkg.path, tdir, recursive=TRUE)
-    repo <- git2r::repository(new.path)
     for(new.i in which(new.not.installed)){
       sha <- sha.vec[[new.i]]
       new.Package <- new.Package.vec[[new.i]]
       if(new.Package %in% pkgs.in.lib){
         if(verbose){
           message(sprintf(
-            "skipping %s because it already exists in %s",
+            "not installing %s because it already exists in %s",
             new.Package, first.lib))
         }
-      }else{#new.Package not in lib
-        if(sha==""){
-          install.packages(Package, verbose=verbose)
-        }else{#sha not empty
-          tryCatch(
-            git2r::checkout(repo, branch=sha, force=TRUE),
-            error=function(e)stop(
-              e, " when trying to checkout ", sha))
-          ## before editing and installing, make sure directory has sha
-          ## suffix, for windows checks.
-          sha.path <- paste0(new.path,".",sha)
-          file.rename(new.path, sha.path)
-          unlink(file.path(sha.path, "src", "*.o"))
-          pkg.edit.fun(
-            old.Package=Package, 
-            new.Package=new.Package,
-            sha=sha, 
-            new.pkg.path=sha.path)
-          install.packages(
-            sha.path, repos=NULL, type="source", verbose=verbose)
-          if(verbose){
-            cat("\nPackage info after editing and installation:\n")
-            grep_glob <- function(glob, pattern){
-              some.files <- Sys.glob(file.path(sha.path, glob))
-              out <- list()
-              for(f in some.files){
-                line.vec <- readLines(f)
-                match.vec <- grep(pattern, line.vec, value=TRUE)
-                if(length(match.vec)){
-                  out[[f]] <- match.vec
-                }
+      }else if(sha == ""){
+        install.packages(Package)
+      }else{
+        sha.path <- paste0(new.path,".",sha)
+        file.rename(new.path, sha.path)
+        repo <- git2r::repository(sha.path)
+        tryCatch(
+          git2r::checkout(repo, branch=sha, force=TRUE),
+          error=function(e)stop(
+            e, " when trying to checkout ", sha))
+        ## before editing and installing, make sure directory has sha
+        ## suffix, for windows checks.
+        unlink(file.path(sha.path, "src", "*.o"))
+        pkg.edit.fun(
+          old.Package=Package, 
+          new.Package=new.Package,
+          sha=sha, 
+          new.pkg.path=sha.path)
+        INSTALL.cmd <- paste("R CMD INSTALL", sha.path)
+        status.int <- system(INSTALL.cmd)
+        if(status.int != 0){
+          stop(INSTALL.cmd, " returned error status code ", status.int)
+        }
+        if(verbose){
+          cat("\nPackage info after editing and installation:\n")
+          grep_glob <- function(glob, pattern){
+            some.files <- Sys.glob(file.path(sha.path, glob))
+            out <- list()
+            for(f in some.files){
+              line.vec <- readLines(f)
+              match.vec <- grep(pattern, line.vec, value=TRUE)
+              if(length(match.vec)){
+                out[[f]] <- match.vec
               }
-              out
-            }#grep_glob
-            out <- c(
-              grep_glob("DESCRIPTION", "^Package"),
-              grep_glob("NAMESPACE", "^useDynLib"),
-              grep_glob(file.path("src", "*.c"), "R_init_"),
-              grep_glob(file.path("src", "*.cpp"), "R_init_"))
-            src.files <- dir(file.path(sha.path, "src"))
-            out[["src/*.so|dll"]] <- grep("(so|dll)$", src.files, value=TRUE)
-            print(out)
-            cat("\n")
-          }#if(verbose)
-          file.rename(sha.path, new.path)
-        }#if(sha) empty else
+            }
+            out
+          }#grep_glob
+          out <- c(
+            grep_glob("DESCRIPTION", "^Package"),
+            grep_glob("NAMESPACE", "^useDynLib"),
+            grep_glob(file.path("src", "*.c"), "R_init_"),
+            grep_glob(file.path("src", "*.cpp"), "R_init_"))
+          src.files <- dir(file.path(sha.path, "src"))
+          out[["src/*.so|dll"]] <- grep("(so|dll)$", src.files, value=TRUE)
+          print(out)
+          cat("\n")
+        }#if(verbose)
+        file.rename(sha.path, new.path)
       }#if(new package not in lib)
     }#for(new.i
   }#any to install
 }
 
-atime_versions <- function(pkg.path, N, setup, expr, sha.vec=NULL, times=10, seconds.limit=0.01, verbose=FALSE, pkg.edit.fun=pkg.edit.default, results=TRUE, ...){
+atime_versions <- function(pkg.path, N, setup, expr, sha.vec=NULL, times=10, seconds.limit=0.01, verbose=FALSE, pkg.edit.fun=pkg.edit.default, result=FALSE, ...){
   ver.args <- list(
     pkg.path, substitute(expr), sha.vec, verbose, pkg.edit.fun, ...)
   ver.exprs <- do.call(atime_versions_exprs, ver.args)
   a.args <- list(
-    N, substitute(setup), ver.exprs, times, seconds.limit, verbose, results)
+    N, substitute(setup), ver.exprs, times, seconds.limit, verbose, result)
   do.call(atime, a.args)
 }
+
+get_sha_vec <- function(sha.vec, dots.vec){
+  SHA.vec <- as.list(c(dots.vec, sha.vec))
+  if(length(SHA.vec)==0){
+    stop("need to specify at least one git SHA, in either sha.vec, or ...")
+  }
+  if(is.null(names(SHA.vec)) || any(names(SHA.vec)=="")){
+    stop("each ... argument and sha.vec element must be named")
+  }
+  is.problem <- !sapply(SHA.vec, function(x){
+    is.character(x) && length(x)==1 && !is.na(x)
+  })
+  if(any(is.problem)){
+    stop("each ... argument value and sha.vec element must be a string (package version, length=1, not NA), problems: ", paste(names(SHA.vec[is.problem]), collapse=", "))
+  }
+  SHA.vec
+}  
 
 atime_versions_exprs <- function(pkg.path, expr, sha.vec=NULL, verbose=FALSE, pkg.edit.fun=pkg.edit.default, ...){
   formal.names <- names(formals())
   mc.args <- as.list(match.call()[-1])
   dots.vec <- mc.args[!names(mc.args) %in% formal.names]
-  SHA.vec <- c(dots.vec, sha.vec)
+  SHA.vec <- get_sha_vec(sha.vec, dots.vec)
   pkg.DESC <- file.path(pkg.path, "DESCRIPTION")
   DESC.mat <- read.dcf(pkg.DESC)
   Package <- DESC.mat[,"Package"]
@@ -156,7 +174,7 @@ atime_pkg <- function(pkg.path="."){
   ## https://github.com/tdhock/binsegRcpp/blob/another-branch/inst/atime/tests.R
   each.sign.rank <- unit <- . <- N <- expr.name <- reference <- fun.name <- 
     empirical <- q25 <- q75 <- p.str <- p.value <- P.value <- 
-      seconds.limit <- time <- NULL
+      seconds.limit <- time <- log10.seconds <- seconds <- NULL
   ## above to avoid CRAN check NOTE.
   pkg.DESC <- file.path(pkg.path, "DESCRIPTION")
   DESC.mat <- read.dcf(pkg.DESC)
@@ -182,9 +200,6 @@ atime_pkg <- function(pkg.path="."){
   width.in <- 4
   height.in <- 8
   expand.prop <- 0.5
-  color.vec <- structure(
-    c("red","black","deepskyblue","violet"), 
-    names=c(HEAD.name, base.name, "merge-base", CRAN.name))
   if(git2r::is_commit(base.commit)){
     add_if_new <- function(name, commit.obj){
       sha <- git2r::sha(commit.obj)
@@ -200,10 +215,16 @@ atime_pkg <- function(pkg.path="."){
   test.env <- new.env()
   tests.parsed <- parse(tests.R)
   eval(tests.parsed, test.env)
+  color.vec <- if(is.null(test.env$version.colors)){
+    structure(c(#RColorBrewer::brewer.pal(7, "Dark2")
+      "#1B9E77", "#D95F02", "#7570B3", "#E7298A", "#66A61E", "#E6AB02", "#A6761D"),
+      names=c(HEAD.name, base.name, "merge-base", CRAN.name, "Before", "Regression", "Fixed"))
+  }else test.env$version.colors
   pkg.results <- list()
   blank.dt.list <- list()
   bench.dt.list <- list()
   limit.dt.list <- list()
+  compare.dt.list <- list()
   for(test.name in names(test.env$test.list)){
     pkg.sha.args <- list(pkg.path=pkg.path, sha.vec=sha.vec)
     user.args <- test.env$test.list[[test.name]]
@@ -216,11 +237,26 @@ atime_pkg <- function(pkg.path="."){
     max.dt <- sec.dt[, .(
       N.values=.N, max.N=max(N)
     ), by=.(expr.name)]
-    p.value <- sec.dt[data.table(N=min(max.dt$max.N)), {
-      best.vec <- log10(as.numeric(time[[which.min(median)]]))
-      head.vec <- log10(as.numeric(time[[which(expr.name==HEAD.name)]]))
-      stats::t.test(head.vec, best.vec, alternative = "greater")$p.value
-    }, on="N"]
+    largest.common.N <- sec.dt[N==min(max.dt$max.N)]
+    ## TODO: fixed comparison?
+    compare.name <- largest.common.N[
+      expr.name!=HEAD.name
+    ][which.min(median), expr.name]
+    HEAD.compare <- c(HEAD.name, compare.name)
+    largest.common.timings <- largest.common.N[
+      expr.name %in% HEAD.compare, .(
+        seconds=as.numeric(time[[1]])
+      ), by=.(N, unit, expr.name)][, log10.seconds := log10(seconds)][]
+    compare.dt.list[[test.name]] <- data.table(
+      test.name, largest.common.timings)
+    test.args <- list()
+    for(commit.i in seq_along(HEAD.compare)){
+      commit.name <- HEAD.compare[[commit.i]]
+      test.args[[commit.i]] <- largest.common.timings[
+        expr.name==commit.name, log10.seconds]
+    }
+    test.args$alternative <- "greater"
+    p.value <- do.call(stats::t.test, test.args)$p.value
     hline.df <- with(atime.list, data.frame(seconds.limit, unit="seconds"))
     limit.dt.list[[test.name]] <- data.table(test.name, hline.df)
     bench.dt.list[[test.name]] <- data.table(
@@ -279,6 +315,7 @@ atime_pkg <- function(pkg.path="."){
   meta.dt <- unique(bench.dt[, .(test.name, P.value)])
   limit.dt <- rbindlist(limit.dt.list)[meta.dt, on="test.name"]
   blank.dt <- rbindlist(blank.dt.list)[meta.dt, on="test.name"]
+  compare.dt <- rbindlist(compare.dt.list)[meta.dt, on="test.name"]
   tests.RData <- sub("R$", "RData", tests.R)
   save(
     pkg.results, bench.dt, limit.dt, color.vec, blank.dt, 
@@ -303,6 +340,10 @@ atime_pkg <- function(pkg.path="."){
       N, ymin=q25, ymax=q75, fill=expr.name),
       data=bench.dt[unit=="seconds"],
       alpha=0.5)+
+    ggplot2::geom_point(ggplot2::aes(
+      N, seconds, color=expr.name),
+      shape=1,
+      data=compare.dt)+
     ggplot2::scale_x_log10()+
     ggplot2::scale_y_log10("median line, quartiles band")+
     directlabels::geom_dl(ggplot2::aes(

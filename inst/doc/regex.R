@@ -38,9 +38,16 @@ all.best <- atime::references_best(all.result)
 plot(all.best)
 
 ## -----------------------------------------------------------------------------
+(all.pred <- predict(all.best))
+summary(all.pred)
+
+## -----------------------------------------------------------------------------
+plot(all.pred)
+
+## -----------------------------------------------------------------------------
 nc.exprs <- atime::atime_grid(
   list(ENGINE=c(
-    ##if(requireNamespace("re2"))"RE2",#uncomment when new nc on CRAN.
+    if(requireNamespace("re2"))"RE2",
     "PCRE",
     if(requireNamespace("stringi"))"ICU")),
   nc=nc::capture_first_vec(subject, pattern, engine=ENGINE))

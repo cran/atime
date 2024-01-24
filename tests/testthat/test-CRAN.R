@@ -1,5 +1,48 @@
 library(data.table)
 library(testthat)
+
+test_that("warning for only one N", {
+  expect_warning({
+    seconds.limit <- 0.001
+    atime.list <- atime::atime(
+      wait=Sys.sleep(seconds.limit),
+      TRE=regexpr(pattern, subject, perl=FALSE),
+      setup={
+        subject <- paste(rep("a", N), collapse="")
+        pattern <- paste(rep(c("a?", "a"), each=N), collapse="")
+      },
+      seconds.limit=seconds.limit)
+  },
+  "please increase max N or seconds.limit, because only one N was evaluated for expr.name: wait",
+  fixed=TRUE)
+})
+
+test_that("error for N wrong type", {
+  expect_error({
+    atime.list <- atime::atime(
+      PCRE=regexpr(pattern, subject, perl=TRUE),
+      TRE=regexpr(pattern, subject, perl=FALSE),
+      setup={
+        subject <- paste(rep("a", N), collapse="")
+        pattern <- paste(rep(c("a?", "a"), each=N), collapse="")
+      },
+      N="foo")
+  }, "N should be a numeric vector")
+})
+
+test_that("error for length(N)==1", {
+  expect_error({
+    atime.list <- atime::atime(
+      PCRE=regexpr(pattern, subject, perl=TRUE),
+      TRE=regexpr(pattern, subject, perl=FALSE),
+      setup={
+        subject <- paste(rep("a", N), collapse="")
+        pattern <- paste(rep(c("a?", "a"), each=N), collapse="")
+      },
+      N=100)
+  }, "length(N) should be at least 2", fixed=TRUE)
+})
+
 test_that("more.units error if not present", {
   atime.list <- atime::atime(
     PCRE=regexpr(pattern, subject, perl=TRUE),
@@ -105,7 +148,7 @@ test_that("atime_grid ok when THREADS used", {
 test_that("error for expr.list not list", {
   expr.list <- atime::atime_grid(
     list(ENGINE=c(
-      ##if(requireNamespace("re2"))"RE2",#uncomment when new nc on CRAN.
+      if(requireNamespace("re2"))"RE2",
       "PCRE",
       if(requireNamespace("stringi"))"ICU")),
     nc=nc::capture_first_vec(subject, pattern, engine=ENGINE))
@@ -134,23 +177,160 @@ test_that("only one value in grid is OK", {
 })
 
 test_that("null is faster than wait", {
-  alist <- atime::atime(
-    N=1:2,
-    setup={},
-    wait=Sys.sleep(0.01),
-    null=NULL,
-    seconds.limit=0.001)
+  suppressWarnings({
+    alist <- atime::atime(
+      N=1:2,
+      setup={},
+      wait=Sys.sleep(0.01),
+      null=NULL,
+      seconds.limit=0.001)
+  })
   expect_equal(nrow(alist$measurements[expr.name=="null"]), 2)
 })
 
 test_that("no error for results=FALSE", {
-  alist <- atime::atime(
-    N=1:2,
-    setup={},
-    wait=Sys.sleep(0.01),
-    null=NULL,
-    results=FALSE,
-    seconds.limit=0.001)
+  suppressWarnings({
+    alist <- atime::atime(
+      N=1:2,
+      setup={},
+      wait=Sys.sleep(0.01),
+      null=NULL,
+      results=FALSE,
+      seconds.limit=0.001)
+  })
   expect_is(alist, "atime")
   expect_equal(sort(alist$measurements$expr.name), c("null","null","results","results","wait"))
 })
+
+my.atime <- atime::atime(
+  vector=x,
+  "vector+1"=x+1,
+  matrix=matrix(x, N, N),
+  setup={
+    x <- rep(1, N)
+  },
+  N=unique(as.integer(10^seq(0,4,l=100))))
+if(interactive())plot(my.atime)
+my.best <- atime::references_best(my.atime)
+if(interactive())plot(my.best)
+
+test_that("predict gives seconds.limit by default", {
+  my.pred.default <- predict(my.best)
+  if(interactive())plot(my.pred.default)
+  expect_true(all(my.pred.default$prediction[["unit"]]=="seconds"))
+  expect_true(all(
+    my.pred.default$prediction[["unit.value"]]==my.pred.default$seconds.limit))
+})
+
+test_that("predict gives only kilobytes", {
+  kb <- 10
+  my.pred.kb <- predict(my.best, kilobytes=kb)
+  if(interactive())plot(my.pred.kb)
+  expect_true(all(my.pred.kb$prediction[["unit"]]=="kilobytes"))
+  expect_true(all(my.pred.kb$prediction[["unit.value"]]==kb))
+})
+
+test_that("predict gives both seconds and kilobytes", {
+  my.pred.both <- predict(
+    my.best, kilobytes=10, seconds=my.best$seconds.limit)
+  if(interactive())plot(my.pred.both)
+  unit.tab <- table(my.pred.both$prediction$unit)
+  expect_identical(names(unit.tab), c("kilobytes","seconds"))
+})
+
+test_that("errors for predict method", {
+  expect_error({
+    predict(my.best, 5)
+  }, "... has an un-named argument, but must have a unit as the name of each argument", fixed=TRUE)
+  expect_error({
+    predict(my.best, kilobytes=100, 5)
+  }, "... has an un-named argument, but must have a unit as the name of each argument", fixed=TRUE)
+  expect_error({
+    predict(my.best, kilobytes="a")
+  }, "... has a non-numeric argument (kilobytes), but each argument must be numeric (unit value at which to interpolate/predict N)", fixed=TRUE)
+  expect_error({
+    predict(my.best, kilobytes=NA_real_)
+  }, "... has a non-finite argument (kilobytes) but each argument must be finite (unit value at which to interpolate/predict N)", fixed=TRUE)
+  expect_error({
+    predict(my.best, kilobytes=1:2)
+  }, "... has an argument with length != 1 (kilobytes), but each argument must be scalar (unit value at which to interpolate/predict N)", fixed=TRUE)
+  expect_error({
+    predict(my.best, kilobytes=1e9)
+  }, "kilobytes=1e+09 is too large, please decrease to a value that intersects at least one of the empirical curves", fixed=TRUE)
+  expect_error({
+    predict(my.best, kilobytes=1000, kilobytes=100, foo=5, bar=5, foo=3, foo=1)
+  }, "argument names should be unique, problem(count): foo(3), kilobytes(2)", fixed=TRUE)
+})
+
+test_that("atime_versions_exprs error when called with setup", {
+  expect_error({
+    atime::atime_versions_exprs(
+      pkg.path="~/R/data.table",
+      N=10^seq(2,10),
+      setup={ 
+        set.seed(1L)
+        dt <- data.table(
+          id = seq_len(N),
+          val = rnorm(N))
+      },
+      expr=data.table:::`[.data.table`(dt[, .(vs = (sum(val))), by = .(id)]),
+      "Before"="be2f72e6f5c90622fe72e1c315ca05769a9dc854",
+      "Regression"="e793f53466d99f86e70fc2611b708ae8c601a451", 
+      "Fixed"="58409197426ced4714af842650b0cc3b9e2cb842") 
+  }, "each ... argument value and sha.vec element must be a string (package version, length=1, not NA), problems: N, setup", fixed=TRUE)
+})
+
+test_that("atime_versions_exprs error when sha.vec element not string", {
+  expect_error({
+    atime::atime_versions_exprs(
+      pkg.path="~/R/data.table",
+      sha.vec=list(N=10^seq(2,10)),
+      expr=data.table:::`[.data.table`(dt[, .(vs = (sum(val))), by = .(id)]),
+      "Before"="be2f72e6f5c90622fe72e1c315ca05769a9dc854",
+      "Regression"="e793f53466d99f86e70fc2611b708ae8c601a451", 
+      "Fixed"="58409197426ced4714af842650b0cc3b9e2cb842") 
+  }, "each ... argument value and sha.vec element must be a string (package version, length=1, not NA), problems: N", fixed=TRUE)
+})
+
+test_that("atime_versions_exprs error when sha.vec element char vector", {
+  expect_error({
+    atime::atime_versions_exprs(
+      pkg.path="~/R/data.table",
+      sha.vec=list(foo=c("bar","baz")),
+      expr=data.table:::`[.data.table`(dt[, .(vs = (sum(val))), by = .(id)]),
+      "Before"="be2f72e6f5c90622fe72e1c315ca05769a9dc854",
+      "Regression"="e793f53466d99f86e70fc2611b708ae8c601a451", 
+      "Fixed"="58409197426ced4714af842650b0cc3b9e2cb842") 
+  }, "each ... argument value and sha.vec element must be a string (package version, length=1, not NA), problems: foo", fixed=TRUE)
+})
+
+test_that("atime_versions error when ... value NA", {
+  expect_error({
+    atime::atime_versions(
+      pkg.path="~/R/data.table",
+      expr=data.table:::`[.data.table`(dt[, .(vs = (sum(val))), by = .(id)]),
+      "Before"=NA_character_,
+      "Regression"="e793f53466d99f86e70fc2611b708ae8c601a451", 
+      "Fixed"="58409197426ced4714af842650b0cc3b9e2cb842") 
+  }, "each ... argument value and sha.vec element must be a string (package version, length=1, not NA), problems: Before", fixed=TRUE)
+})
+
+test_that("atime_versions error when sha.vec element not named", {
+  expect_error({
+    atime::atime_versions(
+      pkg.path="~/R/data.table",
+      expr=data.table:::`[.data.table`(dt[, .(vs = (sum(val))), by = .(id)]),
+      sha.vec=c(
+        "e793f53466d99f86e70fc2611b708ae8c601a451", 
+        "Fixed"="58409197426ced4714af842650b0cc3b9e2cb842"))
+  }, "each ... argument and sha.vec element must be named", fixed=TRUE)
+})
+
+test_that("atime_versions error when no versions specified", {
+  expect_error({
+    atime::atime_versions(
+      pkg.path="~/R/data.table",
+      expr=data.table:::`[.data.table`(dt[, .(vs = (sum(val))), by = .(id)]))
+  }, "need to specify at least one git SHA, in either sha.vec, or ...", fixed=TRUE)
+})
+
