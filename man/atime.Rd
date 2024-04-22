@@ -3,9 +3,11 @@
 \title{Asymptotic timing}
 \description{Computation time and memory for several R expressions of
   several different data sizes.}
+
 \usage{atime(
 N, setup, expr.list=NULL, times=10, seconds.limit=0.01, verbose=FALSE,
 result=FALSE, ...)}
+
 \arguments{
   \item{N}{numeric vector of at least two data sizes, default is \code{2^seq(2,20)}.}
   \item{setup}{expression to evaluate for every data size, before timings.}
@@ -14,14 +16,19 @@ result=FALSE, ...)}
   \item{seconds.limit}{if the median timing of any expression exceeds
     this many seconds, then no timings for larger N are computed.}
   \item{verbose}{logical, print messages after every data size?}
-  \item{result}{logical, save each result?}
+  \item{result}{logical, save each result? If \code{TRUE}, and result is
+  a data frame with one row, then the numeric column names will be
+  saved as more units to analyze (in addition to kilobytes and seconds).}
   \item{\dots}{named expressions to time.}
 }
+
 \details{Each iteration involves first computing the setup expression,
   and then computing several times the \dots expressions. For
   convenience, expressions may be specified either via code (\dots) or
   data (\code{expr.list} arg).}
-\value{list of class atime with elements \code{seconds.limit} (numeric
+
+\value{list of class atime with elements \code{unit.col.vec} (character
+  vector of column names to analyze), \code{seconds.limit} (numeric
   input param), \code{measurements} (data table of results).}
 
 \author{Toby Dylan Hocking}

@@ -25,11 +25,17 @@
   merge-base is most recent common ancestor commit between base and
   HEAD.
   The \code{tests.R} code file can define \code{version.colors} which should be
-  a character vector (names for versions, values for colors).
+  a character vector (names for versions, values for colors; names/versions are
+  HEAD, base, CRAN, merge-base, and any others you may define such as
+  Before, Regression, Slow, Fixed, Fast).
 }
 \value{Named list, names come from names of \code{test.list}, and values
   come from results of \code{atime_versions}. Side effect is that
-  data/plot files are saved in \code{atime} directory.}
+  data/plot files are saved in \code{atime} directory, including
+  tests.RData (test results which can be read into R if you want to make
+  your own alternative plots/analyses), and tests_all_facet.png (plot
+  summarizing all test results).
+  }
 
 \author{Toby Dylan Hocking}
 
