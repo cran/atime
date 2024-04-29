@@ -159,8 +159,6 @@ atime_versions_exprs <- function(pkg.path, expr, sha.vec=NULL, verbose=FALSE, pk
     Package, 
     ifelse(SHA.vec=="", "", "."), 
     SHA.vec)
-  atime_versions_install(
-    Package, pkg.path, new.Package.vec, SHA.vec, verbose, pkg.edit.fun)
   a.args <- list()
   for(commit.i in seq_along(SHA.vec)){
     sha <- SHA.vec[[commit.i]]
@@ -168,10 +166,16 @@ atime_versions_exprs <- function(pkg.path, expr, sha.vec=NULL, verbose=FALSE, pk
     new.Package <- new.Package.vec[[commit.i]]
     old.lines <- capture.output(substitute(expr))
     new.lines <- gsub(
-      paste0(Package,"(:+)"),
-      paste0(new.Package,"\\1"),
+      paste0(Package,":"),
+      paste0(new.Package,":"),
       old.lines)
+    if(Package!=new.Package && identical(old.lines,new.lines)){
+      stop(sprintf("expr should contain at least one instance of %s: to replace with %s:", Package, new.Package))
+    }
     a.args[[commit.name]] <- str2lang(paste(new.lines, collapse="\n"))
+    atime_versions_install(
+      Package, normalizePath(pkg.path),
+      new.Package.vec, SHA.vec, verbose, pkg.edit.fun)
   }
   a.args
 }
@@ -181,7 +185,7 @@ atime_pkg <- function(pkg.path=".", tests.dir="inst"){
   ## https://github.com/tdhock/binsegRcpp/blob/another-branch/inst/atime/tests.R
   each.sign.rank <- unit <- . <- N <- expr.name <- reference <- fun.name <- 
     empirical <- q25 <- q75 <- p.str <- p.value <- P.value <- 
-      seconds.limit <- time <- log10.seconds <- seconds <- NULL
+      seconds.limit <- time <- log10.seconds <- seconds <- Test <- NULL
   ## above to avoid CRAN check NOTE.
   pkg.DESC <- file.path(pkg.path, "DESCRIPTION")
   DESC.mat <- read.dcf(pkg.DESC)
@@ -331,11 +335,11 @@ atime_pkg <- function(pkg.path=".", tests.dir="inst"){
     print(gg)
     grDevices::dev.off()
   }
-  bench.dt <- rbindlist(bench.dt.list)
+  bench.dt <- rbindlist(bench.dt.list)[, Test := test.name]
   setkey(bench.dt, p.value)
   bench.dt[, p.str := sprintf("%.2e", p.value)]
   bench.dt[, P.value := factor(p.str, unique(p.str))]
-  meta.dt <- unique(bench.dt[, .(test.name, P.value)])
+  meta.dt <- unique(bench.dt[, .(Test, test.name, P.value)])
   limit.dt <- rbindlist(limit.dt.list)[meta.dt, on="test.name"]
   blank.dt <- rbindlist(blank.dt.list)[meta.dt, on="test.name"]
   compare.dt <- rbindlist(compare.dt.list)[meta.dt, on="test.name"]
@@ -352,7 +356,7 @@ atime_pkg <- function(pkg.path=".", tests.dir="inst"){
     ggplot2::scale_color_manual(values=color.vec)+
     ggplot2::scale_fill_manual(values=color.vec)+
     ggplot2::facet_grid(
-      unit ~ P.value + test.name, scales="free", labeller="label_both")+
+      unit ~ P.value + Test, scales="free", labeller="label_both")+
     ggplot2::geom_line(ggplot2::aes(
       N, empirical, color=expr.name),
       data=bench.dt)+
