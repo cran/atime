@@ -43,8 +43,11 @@ references <- function
 
 references_best <- function(L, fun.list=NULL){
   N <- expr.name <- . <- fun.name <- dist <- empirical <- reference <-
-    fun.latex <- overall.rank <- NULL
+    fun.latex <- overall.rank <- each.sign.rank <- NULL
   ## Above for R CMD check.
+  if(!inherits(L,"atime")){
+    stop("L argument to references_best should have class atime")
+  }
   DT <- L[["measurements"]]
   not.found <- L$unit.col.vec[!L$unit.col.vec %in% names(DT)]
   if(length(not.found)){
@@ -100,30 +103,35 @@ references_best <- function(L, fun.list=NULL){
       )])
     }
   }
+  ref.dt <- rbindlist(ref.dt.list)
   structure(list(
     seconds.limit=L[["seconds.limit"]],
-    references=do.call(rbind, ref.dt.list),
+    references=ref.dt,
+    plot.references=ref.dt[each.sign.rank==1],
     measurements=do.call(rbind, metric.dt.list)),
     class="references_best")
 }
 
 plot.references_best <- function(x, ...){
   expr.name <- N <- reference <- fun.name <- empirical <- 
-    each.sign.rank <- seconds.limit <- unit <- NULL
+    seconds.limit <- unit <- NULL
   ## Above for R CMD check.
   meas <- x[["measurements"]]
   if(requireNamespace("ggplot2")){
-    hline.df <- with(x, data.frame(seconds.limit, unit="seconds"))
-    ref.dt <- x[["references"]][each.sign.rank==1]
+    ref.dt <- x[["plot.references"]]
     ref.color <- "violet"
     emp.color <- "black"
     gg <- ggplot2::ggplot()+
       ggplot2::facet_grid(unit ~ expr.name, scales="free")+
-      ggplot2::theme_bw()+
-      ggplot2::geom_hline(ggplot2::aes(
+      ggplot2::theme_bw()
+    if(nrow(ref.dt[unit=="seconds"]) || nrow(meas[unit=="seconds"])){
+      hline.df <- with(x, data.frame(seconds.limit, unit="seconds"))
+      gg <- gg+ggplot2::geom_hline(ggplot2::aes(
         yintercept=seconds.limit),
         color="grey",
-        data=hline.df)+
+        data=hline.df)
+    }
+    gg <- gg+
       ggplot2::geom_ribbon(ggplot2::aes(
         N, ymin=min, ymax=max),
         data=meas[unit=="seconds"],

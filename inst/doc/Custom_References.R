@@ -48,10 +48,20 @@ plot(seg.best)
 plot(seg.pred)
 
 ## -----------------------------------------------------------------------------
-my.refs <- list(
+my.refs <- list(# names should be LaTeX math mode expressions.
+  "N"=function(N)log10(N),
   "N \\log N"=function(N)log10(N) + log10(log(N)),
   "N^2"=function(N)2*log10(N),
   "N^3"=function(N)3*log10(N))
 my.best <- atime::references_best(seg.result, fun.list=my.refs)
+dcast(my.best$references, expr.name + fun.name ~ unit, length)
+
+## -----------------------------------------------------------------------------
 plot(my.best)
+
+## -----------------------------------------------------------------------------
+some.best <- my.best
+some.best$plot.references <- my.best$ref[unit=="seconds" & fun.name %in% c("N log N","N^2","N^3")]
+some.best$measurements <- my.best$meas[unit=="seconds"]
+plot(some.best)
 

@@ -1,3 +1,33 @@
+Changes in version 2024.9.25
+
+- atime_pkg creates tests_preview_facet.png if N.tests.preview (default 4, can be defined in atime/tests.R) is less than the number of test cases. It should be informative even when zoomed out, since it shows only the test cases which had smallest p-values (most significant differences between HEAD and min). Recommended for display as thumbnail/preview image with links to the larger tests_preview_all.png that includes all test results (which may not be readable/informative unless you zoom/scroll, if there are 10+ tests).
+
+Changes in version 2024.9.23
+
+- atime_pkg_test_info returns un-evaluated calls to atime_versions, to make it easier to run one test at a time.
+- atime_versions result list contains bench.seconds and install.seconds, to compare how much time is spent in each step. atime_pkg also writes total install time over all test cases to install_seconds.txt.
+- atime_pkg tests_all_facet.png now has ggtitle with number of plots and p-value interpretation.
+
+Changes in version 2024.8.11
+
+- atime_test_list evaluates any arguments that are copied to each test, except setup and expr.
+
+Changes in version 2024.8.8
+
+- plot.references_best now only adds geom_hline if there is at least one row with unit=="seconds" in measurements or plot.references.
+
+Changes in version 2024.8.7
+
+- list returned by references_best contains new element "plot.references" which was previously computed in plot method, and now can be changed by user, to customize the references shown by plot method.
+
+Changes in version 2024.7.12
+
+- atime_versions has default_N(), same as atime.
+
+Changes in version 2024.5.17
+
+- atime_versions_exprs better error message, one instance of pkg:: (two colons instead of one), thanks @MichaelChirico for the suggestion.
+
 Changes in version 2024.4.23
 
 - Fix test-CRAN.R: kilobytes is not available on some systems.
