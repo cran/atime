@@ -1,7 +1,7 @@
 Package: atime
 Type: Package
 Title: Asymptotic Timing
-Version: 2024.10.3
+Version: 2024.10.5
 Authors@R: c(
     person("Toby", "Hocking",
      email="toby.hocking@r-project.org",
@@ -22,8 +22,8 @@ Suggests: directlabels, ggplot2, testthat, knitr, markdown, stringi,
         PeakSegDisk, callr, readr, dplyr, tidyr, nc, RColorBrewer
 VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2024-10-04 13:01:16 UTC; hoct2726
+Packaged: 2024-10-11 08:33:41 UTC; tdhock
 Author: Toby Hocking [aut, cre]
 Maintainer: Toby Hocking <toby.hocking@r-project.org>
 Repository: CRAN
-Date/Publication: 2024-10-04 14:30:06 UTC
+Date/Publication: 2024-10-11 08:50:07 UTC
