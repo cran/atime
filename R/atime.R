@@ -67,18 +67,25 @@ atime_grid <- function
     nrow(value.mat), ncol(value.mat))
   name.value.vec <- apply(name.value.mat, 1, paste, collapse=collapse)
   out.list <- list()
+  out.param.list <- list()
   for(expr.name in names(elist)){
     for(row.i in 1:nrow(param.dt)){
       param.name.value <- name.value.vec[[row.i]]
       out.name <- paste0(expr.name, expr.param.sep, param.name.value)
-      param.row.list <- as.list(param.dt[row.i])
+      param.row <- param.dt[row.i]
+      param.row.list <- as.list(param.row)
       param.row.list[symbol.params] <- lapply(
         param.row.list[symbol.params], as.symbol)
       out.list[[out.name]] <- eval(substitute(
         substitute(EXPR, param.row.list), 
         list(EXPR=elist[[expr.name]])))
+      out.param.list[[paste(expr.name, row.i)]] <- data.table(
+        expr.name=out.name,
+        expr.grid=expr.name,
+        param.row)
     }
   }
+  attr(out.list, "parameters") <- rbindlist(out.param.list)
   out.list
 }
 
@@ -89,6 +96,15 @@ default_N <- function(){
 atime <- function(N=default_N(), setup, expr.list=NULL, times=10, seconds.limit=0.01, verbose=FALSE, result=FALSE, N.env.parent=NULL, ...){
   kilobytes <- mem_alloc <- . <- sizes <- NULL
   ## above for CRAN NOTE.
+  result.fun <- identity
+  result.keep <- if(is.function(result)){
+    result.fun <- result
+    TRUE
+  }else if(isTRUE(result)){
+    TRUE
+  }else{
+    FALSE
+  }
   if(is.null(N.env.parent)){
     N.env.parent <- parent.frame()
   }
@@ -126,10 +142,10 @@ atime <- function(N=default_N(), setup, expr.list=NULL, times=10, seconds.limit=
       N.env$result.list <- list()
       for(expr.name in not.done.yet){
         expr <- elist[[expr.name]]
-        m.list[expr.name] <- list(if(result){
+        m.list[expr.name] <- list(if(result.keep){
           substitute(
-            result.list[NAME] <- list(EXPR),
-            list(NAME=expr.name, EXPR=expr))
+            result.list[NAME] <- list(FUN(EXPR)),
+            list(NAME=expr.name, FUN=result.fun, EXPR=expr))
         }else{
           expr
         })
@@ -143,7 +159,7 @@ atime <- function(N=default_N(), setup, expr.list=NULL, times=10, seconds.limit=
         names.list <- lapply(N.env$result.list, names)
         for(result.i in seq_along(names.list)){
           if(!identical(names.list[[1]], names.list[[result.i]])){
-            stop(sprintf("results are all 1 row data frames, but some have different names (%s, %s); please fix by making row names of results identical", names(names.list)[[1]], names(names.list)[[result.i]]))
+            stop(sprintf("results are all 1 row data frames, but some have different names (%s, %s); please fix by making column names of results identical", names(names.list)[[1]], names(names.list)[[result.i]]))
           }
         }
         result.rows <- do.call(rbind, N.env$result.list)
@@ -152,7 +168,7 @@ atime <- function(N=default_N(), setup, expr.list=NULL, times=10, seconds.limit=
       }else{
         result.rows <- NULL
       }
-      if(result){
+      if(result.keep){
         N.df$result <- N.env$result.list
       }
       N.stats <- data.table(
@@ -190,6 +206,12 @@ atime <- function(N=default_N(), setup, expr.list=NULL, times=10, seconds.limit=
     seconds="median",
     more.units)
   measurements <- rbindlist(metric.dt.list)
+  expr.list.params <- attr(expr.list,"parameters")
+  by.vec <- "expr.name"
+  if(is.data.table(expr.list.params)){
+    measurements <- expr.list.params[measurements, on="expr.name"]
+    by.vec <- names(expr.list.params)
+  }
   only.one <- measurements[, .(sizes=.N), by=expr.name][sizes==1]
   if(nrow(only.one)){
     warning("please increase max N or seconds.limit, because only one N was evaluated for expr.name: ", paste(only.one[["expr.name"]], collapse=", "))
@@ -198,7 +220,8 @@ atime <- function(N=default_N(), setup, expr.list=NULL, times=10, seconds.limit=
     list(
       unit.col.vec=unit.col.vec,
       seconds.limit=seconds.limit,
-      measurements=measurements),
+      measurements=measurements,
+      by.vec=by.vec),
     class="atime")
 }
 
@@ -206,6 +229,7 @@ plot.atime <- function(x, ...){
   expr.name <- N <- kilobytes <- NULL
   ## Above to avoid CRAN NOTE.
   meas <- x[["measurements"]]
+  by.dt <- meas[, x$by.vec, with=FALSE]
   if(requireNamespace("ggplot2")){
     tall.list <- list()
     for(unit.i in seq_along(x$unit.col.vec)){
@@ -213,7 +237,7 @@ plot.atime <- function(x, ...){
       unit <- names(x$unit.col.vec)[[unit.i]]
       if(is.null(unit)||unit=="")unit <- col.name
       tall.list[[unit.i]] <- meas[, data.table(
-        N, expr.name, unit, median=get(col.name))]
+        N, by.dt, unit, median=get(col.name))]
     }
     tall <- rbindlist(tall.list)
     gg <- ggplot2::ggplot()+

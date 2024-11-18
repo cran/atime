@@ -1,7 +1,7 @@
 Package: atime
 Type: Package
 Title: Asymptotic Timing
-Version: 2024.10.5
+Version: 2024.11.15
 Authors@R: c(
     person("Toby", "Hocking",
      email="toby.hocking@r-project.org",
@@ -19,11 +19,12 @@ BugReports: https://github.com/tdhock/atime/issues
 Imports: data.table, bench, lattice, git2r, utils, stats, grDevices
 Suggests: directlabels, ggplot2, testthat, knitr, markdown, stringi,
         re2, binsegRcpp, wbs, fpop, changepoint, LOPART, cumstats,
-        PeakSegDisk, callr, readr, dplyr, tidyr, nc, RColorBrewer
+        PeakSegDisk, callr, readr, dplyr, tidyr, nc, RColorBrewer,
+        tibble, Matrix
 VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2024-10-11 08:33:41 UTC; tdhock
+Packaged: 2024-11-15 19:36:27 UTC; hoct2726
 Author: Toby Hocking [aut, cre]
 Maintainer: Toby Hocking <toby.hocking@r-project.org>
 Repository: CRAN
-Date/Publication: 2024-10-11 08:50:07 UTC
+Date/Publication: 2024-11-18 12:50:29 UTC

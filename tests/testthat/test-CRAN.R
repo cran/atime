@@ -167,7 +167,15 @@ test_that("atime_grid symbol.params arg OK", {
   ),
   foo=FUN(regex, text, proto, perl = PERL),
   symbol.params="FUN")
-  expect_identical(grid.result, list("foo PERL=TRUE,FUN=strcapture"=quote(strcapture(regex, text, proto, perl=TRUE))))
+  expected <- list(
+    "foo PERL=TRUE,FUN=strcapture"=quote(
+      strcapture(regex, text, proto, perl=TRUE)))
+  attr(expected,"parameters") <- data.table(
+    expr.name="foo PERL=TRUE,FUN=strcapture",
+    expr.grid="foo",
+    PERL=TRUE,
+    FUN="strcapture")
+  expect_identical(grid.result, expected)
 })
 
 test_that("atime_grid error for list of funs", {
@@ -358,7 +366,7 @@ if(requireNamespace("nc")){
   })
 }
 
-test_that("references for non-NA unit, with NA unit",{
+if(requireNamespace("ggplot2"))test_that("references for non-NA unit, with NA unit",{
   atime.list <- atime::atime(
     missing=data.frame(my_unit=NA),
     constant=data.frame(my_unit=1),
@@ -390,7 +398,7 @@ test_that("references for non-NA unit, with NA unit",{
   expect_identical(sort(names(rtab)), c("linear","quadratic"))
 })
 
-test_that("references for non-NA unit, with NA unit",{
+test_that("error for result data frames with different column names",{
   expect_error({
     atime::atime(
       missing=data.frame(my_unit=NA),
@@ -399,7 +407,7 @@ test_that("references for non-NA unit, with NA unit",{
       quadratic=data.frame(my_unit=N^2),
       seconds.limit=0.001,
       result=TRUE)
-  }, "results are all 1 row data frames, but some have different names (missing, constant); please fix by making row names of results identical", fixed=TRUE)
+  }, "results are all 1 row data frames, but some have different names (missing, constant); please fix by making column names of results identical", fixed=TRUE)
 })
 
 test_that("error for new unit name conflicting with existing", {
@@ -428,4 +436,72 @@ test_that("atime_test outputs historical versions", {
     Slow = "fd24a3105953f7785ea7414678ed8e04524e6955", # Parent of the merge commit (https://github.com/Rdatatable/data.table/commit/ed72e398df76a0fcfd134a4ad92356690e4210ea) of the PR (https://github.com/Rdatatable/data.table/pull/5054) that fixes the issue
     Fast = "ed72e398df76a0fcfd134a4ad92356690e4210ea") # Merge commit of the PR (https://github.com/Rdatatable/data.table/pull/5054) that fixes the issue
   expect_identical(names(atest), c("setup", "expr", "Slow", "Fast"))
+})
+
+if(require(Matrix))test_that("atime_grid parameters attribute", {
+  param.list <- list(
+    non_zeros=c("N","N^2/10"),
+    fun=c("matrix","Matrix")
+  )
+  (expr.list <- atime::atime_grid(
+    param.list,
+    mult_vector={
+      L[[fun]][[non_zeros]]%*%w
+      data.frame(in_size=N)
+    },
+    add_one={
+      L[[fun]][[non_zeros]]+1
+      data.frame(in_size=N)
+    },
+    collapse="\n"))
+  expected.names <- c("expr.name","expr.grid","non_zeros", "fun")
+  expect_identical(names(attr(expr.list,"parameters")), expected.names)
+  mult.result <- atime::atime(
+    N=as.integer(10^seq(1,2,by=0.25)),
+    setup={
+      L <- list()
+      set.seed(1)
+      w <- rnorm(N)
+      for(non_zeros in param.list$non_zeros){
+        N.not.zero <- as.integer(eval(str2lang(non_zeros)))
+        m <- matrix(0, N, N)
+        m[sample(N^2, N.not.zero)] <- rnorm(N.not.zero)
+        for(fun in param.list$fun){
+          L[[fun]][[non_zeros]] <- get(fun)(as.numeric(m), N, N)
+        }
+      }
+    },
+    foo={
+      w+1
+      data.frame(in_size=N)
+    },
+    result=TRUE,
+    expr.list=expr.list)
+  expect_in(expected.names, names(mult.result$measurements))
+  mult.refs <- atime::references_best(mult.result)
+  expect_in(expected.names, names(mult.refs$measurements))
+  expect_in(expected.names, names(mult.refs$plot.references))
+  mult.pred <- predict(mult.refs, in_size=50)
+  expect_in(expected.names, names(mult.pred$measurements))
+  expect_in(expected.names, names(mult.pred$prediction))
+})
+
+if(require(Matrix))test_that("result=fun works", {
+  pred.len <- 100
+  sqrt.len <- sqrt(pred.len)
+  vec.mat.result <- atime::atime(
+    N=2^seq(1,ceiling(log2(pred.len))),
+    vector=numeric(N),
+    matrix=matrix(0, N, N),
+    Matrix=Matrix(0, N, N),
+    result=function(x)data.frame(length=length(x)))
+  expect_is(vec.mat.result$measurements$length, "integer")
+  vec.mat.refs <- atime::references_best(vec.mat.result)
+  vec.mat.pred <- predict(vec.mat.refs, length=pred.len)
+  ## precise estimation of length:
+  expect_equal(vec.mat.pred$prediction, data.table(
+    unit="length",
+    expr.name=c("vector","matrix","Matrix"),
+    unit.value=pred.len,
+    N=c(pred.len,sqrt.len,sqrt.len)))
 })
