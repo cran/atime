@@ -7,7 +7,7 @@ options(width=120)
 
 ## ---------------------------------------------------------------------------------------------------------------------
 library(Matrix)
-N_seq <- as.integer(10^seq(1,7,by=0.25))
+N_seq <- unique(as.integer(10^seq(0,7,by=0.25)))
 vec.mat.result <- atime::atime(
   N=N_seq,
   vector=numeric(N),
@@ -81,7 +81,7 @@ vec.mat.pred <- predict(
   vec.mat.best,
   seconds=vec.mat.result$seconds.limit,
   ##kilobytes=1000,#not available on CRAN.
-  length=1e6)
+  length=100)
 plot(vec.mat.pred)
 
 ## ---------------------------------------------------------------------------------------------------------------------
