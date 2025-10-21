@@ -1,17 +1,12 @@
-## ----setup, include = FALSE---------------------------------------------------
-knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>"
-)
-
-## -----------------------------------------------------------------------------
 (subject.size.vec <- unique(as.integer(10^seq(0,3.5,l=100))))
+
 (backtrackers <- c(
   if(requireNamespace("stringi"))atime::atime_grid(
     ICU=stringi::stri_match(subject, regex=pattern)),
   atime::atime_grid(
     PCRE=regexpr(pattern, subject, perl=TRUE),
     TRE=regexpr(pattern, subject, perl=FALSE))))
+
 backtrackers.result <- atime::atime(
   N=subject.size.vec,
   setup={
@@ -22,11 +17,11 @@ backtrackers.result <- atime::atime(
 backtrackers.best <- atime::references_best(backtrackers.result)
 plot(backtrackers.best)
 
-## -----------------------------------------------------------------------------
-all.exprs <- c(
+(all.exprs <- c(
   if(requireNamespace("re2"))atime::atime_grid(
     RE2=re2::re2_match(subject, pattern)),
-  backtrackers)
+  backtrackers))
+
 all.result <- atime::atime(
   N=subject.size.vec,
   setup={
@@ -37,20 +32,17 @@ all.result <- atime::atime(
 all.best <- atime::references_best(all.result)
 plot(all.best)
 
-## -----------------------------------------------------------------------------
 (all.pred <- predict(all.best))
 summary(all.pred)
 
-## -----------------------------------------------------------------------------
 plot(all.pred)
 
-## -----------------------------------------------------------------------------
-nc.exprs <- atime::atime_grid(
+(nc.exprs <- atime::atime_grid(
   list(ENGINE=c(
     if(requireNamespace("re2"))"RE2",
     "PCRE",
     if(requireNamespace("stringi"))"ICU")),
-  nc=nc::capture_first_vec(subject, pattern, engine=ENGINE))
+  nc=nc::capture_first_vec(subject, pattern, engine=ENGINE)))
 nc.result <- atime::atime(
   N=subject.size.vec,
   setup={

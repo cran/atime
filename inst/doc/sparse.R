@@ -1,11 +1,5 @@
-## ----setup, include = FALSE-------------------------------------------------------------------------------------------
-knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>"
-)
 options(width=120)
 
-## ---------------------------------------------------------------------------------------------------------------------
 library(Matrix)
 N_seq <- unique(as.integer(10^seq(0,7,by=0.25)))
 vec.mat.result <- atime::atime(
@@ -16,7 +10,6 @@ vec.mat.result <- atime::atime(
   result=function(x)data.frame(length=length(x)))
 plot(vec.mat.result)
 
-## ---------------------------------------------------------------------------------------------------------------------
 seconds.limit <- 0.01
 done.vec <- NULL
 measure.vars <- c("seconds","kilobytes","length")
@@ -50,7 +43,6 @@ press_result <- bench::press(N = N_seq, {
   mark.result
 })
 
-## ---------------------------------------------------------------------------------------------------------------------
 library(data.table)
 (press_long <- melt(
   data.table(press_result),
@@ -72,11 +64,9 @@ if(require(ggplot2)){
   }else gg
 }
 
-## ---------------------------------------------------------------------------------------------------------------------
 vec.mat.best <- atime::references_best(vec.mat.result)
 plot(vec.mat.best)
 
-## ---------------------------------------------------------------------------------------------------------------------
 vec.mat.pred <- predict(
   vec.mat.best,
   seconds=vec.mat.result$seconds.limit,
@@ -84,13 +74,11 @@ vec.mat.pred <- predict(
   length=100)
 plot(vec.mat.pred)
 
-## ---------------------------------------------------------------------------------------------------------------------
 library(data.table)
 dcast(vec.mat.pred$prediction[
 , ratio := N[expr.name=="Matrix"]/N, by=unit
 ], unit + unit.value ~ expr.name, value.var="ratio")
 
-## ---------------------------------------------------------------------------------------------------------------------
 library(Matrix)
 sparse.prop <- 0.9
 dense.prop <- 1-sparse.prop
@@ -109,11 +97,9 @@ mult.result <- atime::atime(
   result=TRUE)
 plot(mult.result)
 
-## ---------------------------------------------------------------------------------------------------------------------
 mult.best <- atime::references_best(mult.result)
 plot(mult.best)
 
-## ---------------------------------------------------------------------------------------------------------------------
 library(data.table)
 mult.compare <- dcast(
   mult.result$measurements, N ~ expr.name, value.var="result"
@@ -121,9 +107,8 @@ mult.compare <- dcast(
 , equal := paste(all.equal(as.numeric(dense[[1]]), as.numeric(sparse[[1]])))
 , by=N
 ][]
-tibble::tibble(mult.compare)
+mult.compare[,.(N,equal)]
 
-## ---------------------------------------------------------------------------------------------------------------------
 library(Matrix)
 mult.result <- atime::atime(
   N=as.integer(10^seq(1,4,by=0.25)),
@@ -140,11 +125,9 @@ mult.result <- atime::atime(
   result=TRUE)
 plot(mult.result)
 
-## ---------------------------------------------------------------------------------------------------------------------
 mult.best <- atime::references_best(mult.result)
 plot(mult.best)
 
-## ---------------------------------------------------------------------------------------------------------------------
 library(data.table)
 mult.compare <- dcast(
   mult.result$measurements, N ~ expr.name, value.var="result"
@@ -152,21 +135,18 @@ mult.compare <- dcast(
 , equal := paste(all.equal(as.numeric(dense[[1]]), as.numeric(sparse[[1]])))
 , by=N
 ][]
-tibble::tibble(mult.compare)
+mult.compare[,.(N,equal)]
 
-## ---------------------------------------------------------------------------------------------------------------------
 param.list <- list(
   non_zeros=c("N","N^2/10"),
   fun=c("matrix","Matrix")
 )
 
-## ---------------------------------------------------------------------------------------------------------------------
 (expr.list <- atime::atime_grid(
   param.list,
   Mw=L[[fun]][[non_zeros]]%*%w,
   collapse="\n"))
 
-## ---------------------------------------------------------------------------------------------------------------------
 mult.result <- atime::atime(
   N=as.integer(10^seq(1,3.5,by=0.25)),
   setup={
@@ -185,11 +165,9 @@ mult.result <- atime::atime(
   expr.list=expr.list)
 plot(mult.result)
 
-## ---------------------------------------------------------------------------------------------------------------------
 mult.best <- atime::references_best(mult.result)
 plot(mult.best)
 
-## ---------------------------------------------------------------------------------------------------------------------
 only.seconds <- mult.best
 only.seconds$measurements <- mult.best$measurements[unit=="seconds"]
 only.seconds$plot.references <- mult.best$plot.references[unit=="seconds"]

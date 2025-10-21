@@ -1,10 +1,3 @@
-## ----setup, include = FALSE---------------------------------------------------
-knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>"
-)
-
-## -----------------------------------------------------------------------------
 library(data.table)
 viz.data <- function(get.seg.means, data.per.seg=10, penalty=1){
   no.labels <- data.table(
@@ -64,9 +57,7 @@ viz.data <- function(get.seg.means, data.per.seg=10, penalty=1){
 }
 viz.data(function(N.segs)rep(0:1,l=N.segs))
 
-## -----------------------------------------------------------------------------
 viz.data(function(N.segs)1:N.segs)
 
-## -----------------------------------------------------------------------------
 viz.data(function(N.segs)1:N.segs, data.per.seg=1, penalty=1e10)
 
