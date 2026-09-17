@@ -12,14 +12,15 @@
   \code{atime_pkg} runs all tests and saves results/plots to disk.
 }
 \usage{
-atime_pkg(pkg.path=".", tests.dir=NULL)
-atime_pkg_test_info(pkg.path=".", tests.dir=NULL)
+atime_pkg(pkg.path=".", tests.dir=NULL, verbose=FALSE)
+atime_pkg_test_info(pkg.path=".", tests.dir=NULL, verbose=FALSE)
 }
 \arguments{
   \item{pkg.path}{path to git repository containing R package.}
   \item{tests.dir}{path to directory which contains \code{atime/tests.R},
     relative to \code{pkg.path} (default \code{NULL} means first
     existing directory of \code{"inst"} or \code{".ci"}).}
+  \item{verbose}{logical (default \code{FALSE}): print messages?}
 }
 \details{
   There should be a \code{tests.R} code file which
@@ -87,9 +88,8 @@ if(FALSE){
   ## Clone binsegRcpp, and checkout a branch which has performance tests.
   tdir <- tempfile()
   dir.create(tdir)
-  git2r::clone("https://github.com/tdhock/binsegRcpp", tdir)
-  repo <- git2r::repository(tdir)
-  git2r::checkout(repo, "another-branch")
+  gert::git_clone("https://github.com/tdhock/binsegRcpp", tdir)
+  gert::git_branch_checkout("another-branch", repo=tdir)
 
   ## Run one test.
   info.env <- atime::atime_pkg_test_info(tdir)

@@ -11,8 +11,7 @@ atime.gsub.list <- atime::atime(
     pattern <- paste(rep(c("a?", "a"), each=N), collapse="")
   },
   constant.replacement=gsub_replace("constant size replacement",subject),
-  linear.replacement=gsub_replace(subject,subject),
-  result=TRUE)
+  linear.replacement=gsub_replace(subject,subject))
 plot(atime.gsub.list)
 
 ref.gsub.list <- atime::references_best(atime.gsub.list)
@@ -43,8 +42,7 @@ penalty <- 1e6
   N=as.integer(10^seq(1, 3, by=0.5)),
   setup=SETUP,
   expr.list=expr.list,
-  seconds.limit=Inf,
-  result=TRUE),
+  seconds.limit=Inf),
   list(SETUP=setup)))
 
 atime.DP.list <- eval(atime.DP.lang)

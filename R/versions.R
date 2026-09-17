@@ -1,27 +1,37 @@
-glob_find_replace <- function(glob, FIND, REPLACE){
+glob_find_replace <- function(glob, FIND, REPLACE, warn=TRUE){
   some.files <- Sys.glob(glob)
   for(f in some.files){
     l.old <- readLines(f)
     l.new <- gsub(FIND, REPLACE, l.old)
-    writeLines(l.new, f)
+    if(identical(l.old, l.new)){
+      if(warn)warning(sprintf(
+        "no changes to %s when FIND=%s and replace=%s",
+        f, FIND, REPLACE))
+    }else{
+      writeLines(l.new, f)
+    }
   }
 }
 
 pkg.edit.default <- function(old.Package, new.Package, sha, new.pkg.path){
-  pkg_find_replace <- function(glob, FIND, REPLACE){
-    glob_find_replace(file.path(new.pkg.path, glob), FIND, REPLACE)
+  pkg_find_replace <- function(glob, FIND, REPLACE, warn=TRUE){
+    glob_find_replace(file.path(new.pkg.path, glob), FIND, REPLACE, warn)
   }
   pkg_find_replace(
     "DESCRIPTION", 
     paste0("Package:\\s+", old.Package),
     paste("Package:", new.Package))
   Package_ <- gsub(".", "_", old.Package, fixed=TRUE)
-  R_init_pkg <- paste0("R_init_", Package_)
   new.Package_ <- paste0(Package_, "_", sha)
   pkg_find_replace(
     file.path("src", "RcppExports.cpp"),
-    R_init_pkg,
+    paste0("R_init_", Package_),
     paste0("R_init_", new.Package_))
+  pkg_find_replace(
+    file.path("R", "RcppExports.R"),
+    sprintf("PACKAGE = '%s'", old.Package),
+    sprintf("PACKAGE = '%s'", new.Package),
+    warn=FALSE)#does not appear if registration used.
   pkg_find_replace(
     "NAMESPACE",
     sprintf('useDynLib\\("?%s"?', Package_),
@@ -41,7 +51,19 @@ atime_versions_remove <- function(Package){
   code
 }
 
-atime_versions_install <- function(Package, pkg.path, new.Package.vec, sha.vec, verbose, pkg.edit.fun=pkg.edit.default){
+R_CMD_INSTALL <- function(new.pkg.path){
+  INSTALL.cmd <- paste(
+    shQuote(file.path(
+      Sys.getenv("R_HOME"),
+      "bin",
+      "R")),
+    'CMD INSTALL -l',
+    shQuote(.libPaths()[1]),
+    shQuote(new.pkg.path))
+  system(INSTALL.cmd)
+}
+
+atime_versions_install <- function(Package, pkg.path, new.Package.vec, sha.vec, verbose, pkg.edit.fun=pkg.edit.default, checkout.path=pkg.path){
   first.lib <- .libPaths()[1]
   DESC.in.lib <- Sys.glob(file.path(first.lib, "*", "DESCRIPTION"))
   pkgs.in.lib <- basename(dirname(DESC.in.lib))
@@ -50,13 +72,18 @@ atime_versions_install <- function(Package, pkg.path, new.Package.vec, sha.vec, 
     ## on GH actions windows tempfile() gives C:\Users\RUNNER~1\AppData\Local\Temp\Rtmpc9T5Us/working_dir\Rtmpu23suf\file5d41af35765
     tdir <- normalizePath(tempfile(), mustWork=FALSE)
     dir.create(tdir)
-    ## pkg.path may be path/to/repo/pkg
-    norm.pkg.path <- normalizePath(pkg.path)
-    orig.repo <- git2r::repository(norm.pkg.path)
+    ## pkg.path may be in a sub-dir of git repo: path/to/repo/pkg
     ## path/to/repo root without trailing /.git
-    orig.repo.path <- normalizePath(dirname(orig.repo$path))
+    orig.repo.path <- normalizePath(gert::git_info(pkg.path)$path)
     ## /pkg
-    pkg.suffix.in.repo <- sub(orig.repo.path, "", norm.pkg.path, fixed=TRUE)
+    sub_or_stop <- function(x){
+      nx <- normalizePath(x)
+      out <- sub(orig.repo.path, "", nx, fixed=TRUE)
+      if(out==x)stop(sprintf("repo=%s should be the first part of %s", orig.repo.path, nx))
+      out
+    }
+    pkg.suffix.in.repo <- sub_or_stop(pkg.path)
+    checkout.suffix.in.repo <- sub_or_stop(checkout.path)
     for(new.i in which(new.not.installed)){
       sha <- sha.vec[[new.i]]
       new.Package <- new.Package.vec[[new.i]]
@@ -71,31 +98,22 @@ atime_versions_install <- function(Package, pkg.path, new.Package.vec, sha.vec, 
       }else{
         new.repo.path <- file.path(tdir, new.Package)
         unlink(new.repo.path, recursive=TRUE, force=TRUE)
-        repo <- git2r::clone(orig.repo.path, new.repo.path, progress=FALSE)
+        file.copy(orig.repo.path, tdir, recursive=TRUE)
+        file.rename(file.path(tdir, basename(orig.repo.path)), new.repo.path)
+        new.checkout.path <- paste0(new.repo.path, checkout.suffix.in.repo)
         new.pkg.path <- paste0(new.repo.path, pkg.suffix.in.repo)
-        tryCatch(
-          git2r::checkout(repo, branch=sha, force=TRUE),
-          error=function(e)stop(
-            e, " when trying to checkout ", sha))
-        ## before editing and installing, make sure directory has sha
-        ## suffix, for windows checks.
+        gert::git_restore(".", repo=new.checkout.path)#to avoid conflicts, because file.copy() above can sometimes cause status=typechange.
+        gert::git_branch_create(#and checkout
+          "atime-versions-testing", sha, repo=new.checkout.path)
         unlink(file.path(new.pkg.path, "src", "*.o"))
         pkg.edit.fun(
           old.Package=Package, 
           new.Package=new.Package,
           sha=sha, 
           new.pkg.path=new.pkg.path)
-        INSTALL.cmd <- paste(
-          shQuote(file.path(
-            Sys.getenv("R_HOME"),
-            "bin",
-            "R")),
-          'CMD INSTALL -l',
-          shQuote(.libPaths()[1]),
-          shQuote(new.pkg.path))
-        status.int <- system(INSTALL.cmd)
+        status.int <- R_CMD_INSTALL(new.pkg.path)
         if(status.int != 0){
-          stop(INSTALL.cmd, " returned error status code ", status.int)
+          stop("R CMD INSTALL returned error status code ", status.int)
         }
         if(verbose){
           cat("\nPackage info after editing and installation:\n")
@@ -115,6 +133,7 @@ atime_versions_install <- function(Package, pkg.path, new.Package.vec, sha.vec, 
             grep_glob("DESCRIPTION", "^Package"),
             grep_glob("NAMESPACE", "^useDynLib"),
             grep_glob(file.path("src", "*.c"), "R_init_"),
+            grep_glob(file.path("R", "RcppExports.R"), "PACKAGE"),
             grep_glob(file.path("src", "*.cpp"), "R_init_"))
           src.files <- dir(file.path(new.pkg.path, "src"))
           out[["src/*.so|dll"]] <- grep("(so|dll)$", src.files, value=TRUE)
@@ -126,14 +145,24 @@ atime_versions_install <- function(Package, pkg.path, new.Package.vec, sha.vec, 
   }#any to install
 }
 
-atime_versions <- function(pkg.path, N=default_N(), setup, expr, sha.vec=NULL, times=10, seconds.limit=0.01, verbose=FALSE, pkg.edit.fun=pkg.edit.default, result=FALSE, N.env.parent=NULL, ...){
+atime_versions <- function(pkg.path, N=default_N(), setup, expr, sha.vec=NULL, times=10, seconds.limit=0.01, verbose=FALSE, pkg.edit.fun=pkg.edit.default, result=FALSE, N.env.parent=NULL, setup.version=NULL, checkout.path=pkg.path, ...){
   ver.args <- list(
-    pkg.path, substitute(expr), sha.vec, verbose, pkg.edit.fun, ...)
+    pkg.path, substitute(expr), sha.vec, verbose, pkg.edit.fun, substitute(setup.version), checkout.path, ...)
   install.seconds <- system.time({
     ver.exprs <- do.call(atime_versions_exprs, ver.args)
   })[["elapsed"]]
+  if(missing(setup)){
+    sub.setup <- quote({})
+  }else{
+    sub.setup <- substitute(setup)
+    Package <- attr(ver.exprs, "Package")
+    if(is.character(Package)){
+      new.Package <- attr(ver.exprs, "new.Package")
+      sub.setup <- expr_pkg(sub.setup, Package, new.Package, check=FALSE)
+    }
+  }
   a.args <- list(
-    N, substitute(setup), ver.exprs, times, seconds.limit, verbose, result, N.env.parent)
+    N, sub.setup, ver.exprs, times, seconds.limit, verbose, result, N.env.parent)
   bench.seconds <- system.time({
     out.list <- do.call(atime, a.args)
   })[["elapsed"]]
@@ -157,9 +186,22 @@ get_sha_vec <- function(sha.vec, dots.vec){
     stop("each ... argument value and sha.vec element must be a string (package version, length=1, not NA), problems: ", paste(names(SHA.vec[is.problem]), collapse=", "))
   }
   SHA.vec
-}  
+}
 
-atime_versions_exprs <- function(pkg.path, expr, sha.vec=NULL, verbose=FALSE, pkg.edit.fun=pkg.edit.default, ...){
+expr_pkg <- function(expr, Package, new.Package, check=FALSE){
+  old.lines <- capture.output(expr)
+  new.lines <- gsub(
+    paste0(Package,"::"),
+    paste0(new.Package,"::"),
+    old.lines,
+    fixed=TRUE)
+  if(check && Package!=new.Package && identical(old.lines,new.lines)){
+    stop(sprintf("expr=%s should contain at least one instance of %s:: to replace with %s::", old.lines, Package, new.Package))
+  }
+  str2lang(paste(new.lines, collapse="\n"))
+}
+
+atime_versions_exprs <- function(pkg.path, expr, sha.vec=NULL, verbose=FALSE, pkg.edit.fun=pkg.edit.default, setup.version=NULL, checkout.path=pkg.path, ...){
   formal.names <- names(formals())
   mc.args <- as.list(match.call()[-1])
   dots.vec <- mc.args[!names(mc.args) %in% formal.names]
@@ -175,23 +217,25 @@ atime_versions_exprs <- function(pkg.path, expr, sha.vec=NULL, verbose=FALSE, pk
     ifelse(SHA.vec=="", "", "."), 
     SHA.vec)
   a.args <- list()
+  sub.expr <- substitute(expr)
   for(commit.i in seq_along(SHA.vec)){
     sha <- SHA.vec[[commit.i]]
     commit.name <- names(SHA.vec)[[commit.i]]
     new.Package <- new.Package.vec[[commit.i]]
-    old.lines <- capture.output(substitute(expr))
-    new.lines <- gsub(
-      paste0(Package,"::"),
-      paste0(new.Package,"::"),
-      old.lines,
-      fixed=TRUE)
-    if(Package!=new.Package && identical(old.lines,new.lines)){
-      stop(sprintf("expr should contain at least one instance of %s:: to replace with %s::", Package, new.Package))
+    if(grepl("HEAD", commit.name)){
+      attr(a.args, "Package") <- Package
+      attr(a.args, "new.Package") <- new.Package
     }
-    a.args[[commit.name]] <- str2lang(paste(new.lines, collapse="\n"))
+    v.expr <- expr_pkg(sub.expr, Package, new.Package, check=TRUE)
+    sub.ver <- substitute(setup.version)
+    if(!is.null(sub.ver)){
+      attr(v.expr, "setup.version") <- expr_pkg(sub.ver, Package, new.Package, check=TRUE)
+    }
+    a.args[[commit.name]] <- v.expr
     atime_versions_install(
       Package, normalizePath(pkg.path),
-      new.Package.vec, SHA.vec, verbose, pkg.edit.fun)
+      new.Package.vec, SHA.vec, verbose, pkg.edit.fun,
+      checkout.path)
   }
   a.args
 }

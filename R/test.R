@@ -9,11 +9,11 @@ find_tests_file <- function(pkg.path, tests.dir){
   stop("could not find tests.R file after checking ", paste(checked, collapse=", "))
 }
 
-atime_pkg <- function(pkg.path=".", tests.dir=NULL){
+atime_pkg <- function(pkg.path=".", tests.dir=NULL, verbose=FALSE){
   ## For an example package see
   ## https://github.com/tdhock/binsegRcpp/blob/another-branch/inst/atime/tests.R
   pkg.results <- list()
-  test.info <- atime_pkg_test_info(pkg.path, tests.dir)
+  test.info <- atime_pkg_test_info(pkg.path, tests.dir, verbose=verbose)
   for(Test in names(test.info$test.call)){
     atv.call <- test.info$test.call[[Test]]
     atime.list <- eval(atv.call, test.info)
@@ -24,7 +24,7 @@ atime_pkg <- function(pkg.path=".", tests.dir=NULL){
 
 atime_pkg_plot_files <- function(out.dir, test.info, pkg.results){
   each.sign.rank <- unit <- . <- N <- expr.name <- reference <- fun.name <- 
-    empirical <- q25 <- q75 <- p.str <- p.value <- P.value <- 
+    empirical <- q25 <- q75 <- p.str <- p.value <- P.value <- fun.latex <- expr.class <- expr.latex <- 
       seconds.limit <- time <- log10.seconds <- seconds <- Test <-
         N.factor <- unit.value <- x.str <- pred.Nx <- NULL
   ## above to avoid CRAN check NOTE.
@@ -35,6 +35,11 @@ atime_pkg_plot_files <- function(out.dir, test.info, pkg.results){
   issue <- character()
   for(Test in names(pkg.results)){
     atime.list <- pkg.results[[Test]]
+    if(is.character(test.info$remove.units)){
+      keep <- !atime.list$unit.col.vec %in% test.info$remove.units
+      ## don't use setdiff() here because it drops names.
+      atime.list$unit.col.vec <- atime.list$unit.col.vec[keep]
+    }
     best.list <- atime::references_best(atime.list)
     ref.dt <- best.list$ref[each.sign.rank==1]
     sec.dt <- best.list$meas[unit=="seconds"]
@@ -112,15 +117,19 @@ atime_pkg_plot_files <- function(out.dir, test.info, pkg.results){
     log10.n.factor <- log10(n.factor)
     abs.log10.n.factor <- abs(log10.n.factor)
     max.N.times <- (10^abs.log10.n.factor)*sign(log10.n.factor)
+    some.meas <- best.list$meas[, .(
+      unit, expr.name, N, empirical,
+      q25, q75,
+      fun.name, fun.latex,
+      expr.class, expr.latex)]
     bench.dt.list[[Test]] <- data.table(
       Test, p.value, n.factor,
       log10.n.factor, abs.log10.n.factor,
-      max.N.times,
-      best.list$meas)
+      max.N.times, some.meas)
     log10.range <- range(log10(atime.list$meas$N))
     expand <- diff(log10.range)*test.info$expand.prop
     xmax <- 10^(log10.range[2]+expand)
-    blank.dt.list[[Test]] <- data.table(Test, best.list$meas[1])[, N := xmax]
+    blank.dt.list[[Test]] <- data.table(Test, some.meas[1][, N := xmax])
     gg <- ggplot2::ggplot()+
       ggplot2::ggtitle(Test)+
       ggplot2::theme_bw()+
@@ -282,7 +291,7 @@ default.version.colors <- c(#RColorBrewer::brewer.pal(7, "Dark2")
   Fixed="#A6761D", Fast="#A6761D"
 )
 
-atime_pkg_test_info <- function(pkg.path=".", tests.dir=NULL){
+atime_pkg_test_info <- function(pkg.path=".", tests.dir=NULL, verbose=FALSE){
   if(is.null(tests.dir)){
     tests.dir <- c("inst",".ci")
   }
@@ -290,6 +299,9 @@ atime_pkg_test_info <- function(pkg.path=".", tests.dir=NULL){
   test.env$tests.R <- find_tests_file(pkg.path, tests.dir)
   tests.parsed <- parse(test.env$tests.R)
   eval(tests.parsed, test.env)
+  checkout.path <- if(is.character(test.env$checkout.path.relative)){
+    file.path(pkg.path, test.env$checkout.path.relative)
+  }else pkg.path
   default.list <- list(
     pval.thresh=0.01,
     N.tests.preview=4,
@@ -305,42 +317,49 @@ atime_pkg_test_info <- function(pkg.path=".", tests.dir=NULL){
   pkg.DESC <- file.path(pkg.path, "DESCRIPTION")
   DESC.mat <- read.dcf(pkg.DESC)
   Package <- DESC.mat[,"Package"]
-  repo <- git2r::repository(pkg.path)
-  HEAD.commit <- git2r::revparse_single(repo, "HEAD")
+  HEAD.commit <- gert::git_commit_id("HEAD", repo=checkout.path)
   sha.vec <- c()
-  HEAD.name <- paste0("HEAD=",git2r::repository_head(repo)$name)
-  sha.vec[[HEAD.name]] <- git2r::sha(HEAD.commit)
-  installed_version <- tryCatch(paste(packageVersion(Package)), error=function(e)NULL)
-  if(!is.null(installed_version)){
-    CRAN.name <- paste0("CRAN=", installed_version)
-    sha.vec[[CRAN.name]] <- ""
-  }else{
-    CRAN.name <- NA_character_
-  }
+  HEAD.name <- paste0("HEAD=", gert::git_branch(repo=checkout.path))
+  sha.vec[[HEAD.name]] <- HEAD.commit
+  installed_version <- tryCatch(paste(packageVersion(Package)), error=function(e)"(not installed)")
   ap <- utils::available.packages()
-  CRAN_version <- ap[Package,"Version"]
-  if(!identical(CRAN_version, installed_version)){
-    warning(sprintf(
-      "CRAN version=%s but installed version=%s fix via install.packages('%s')",
-      CRAN_version, installed_version, Package))
+  installed_name <- "installed"
+  if(Package %in% rownames(ap)){
+    CRAN_version <- ap[Package,"Version"]
+    if(identical(CRAN_version, installed_version)){
+      installed_name <- "CRAN"
+    }else{
+      warning(sprintf(
+        "CRAN version=%s but installed version=%s fix via install.packages('%s')",
+        CRAN_version, installed_version, Package))
+    }
   }
-  base.ref <- Sys.getenv("GITHUB_BASE_REF", "master")
+  if(identical(installed_version, "(not installed)")){
+    CRAN.name <- NA_character_
+  }else{
+    CRAN.name <- paste0(installed_name, "=", installed_version)
+    if(identical(pkg.path, checkout.path))sha.vec[[CRAN.name]] <- ""
+  }
+  if(is.null(test.env$base.ref)){
+    test.env$base.ref <- Sys.getenv("GITHUB_BASE_REF", "master")
+  }
   base.commit <- tryCatch({
-    git2r::revparse_single(repo, base.ref)
+    gert::git_commit_info(test.env$base.ref, repo=checkout.path)$id
   }, error=function(e){
     NULL
   })
-  base.name <- paste0("base=",base.ref)
-  if(git2r::is_commit(base.commit)){
-    add_if_new <- function(name, commit.obj){
-      sha <- git2r::sha(commit.obj)
-      if(!sha %in% sha.vec){
-        sha.vec[[name]] <<- sha
+  base.name <- paste0("base=", test.env$base.ref)
+  if(is.character(base.commit)){
+    maybe.new.list <- list()
+    maybe.new.list[[base.name]] <- base.commit
+    maybe.new.list[["merge-base"]] <- gert::git_merge_find_base(
+      base.commit, "HEAD", repo=checkout.path)
+    for(maybe.new.name in names(maybe.new.list)){
+      maybe.new.sha <- maybe.new.list[[maybe.new.name]]
+      if(!maybe.new.sha %in% sha.vec){
+        sha.vec[[maybe.new.name]] <- maybe.new.sha
       }
     }
-    add_if_new(base.name, base.commit)
-    mb.commit <- git2r::merge_base(HEAD.commit, base.commit)
-    add_if_new("merge-base", mb.commit)
   }
   abbrev2name <- c(
     HEAD=HEAD.name,
@@ -356,7 +375,9 @@ atime_pkg_test_info <- function(pkg.path=".", tests.dir=NULL){
   common.args <- list(
     N.env.parent=test.env,
     pkg.path=pkg.path,
-    sha.vec=sha.vec)
+    sha.vec=sha.vec,
+    verbose=verbose,
+    checkout.path=checkout.path)
   test.env$sha.vec <- sha.vec
   test.env$test.list <- inherit_args(test.env$test.list, common.args)
   test.env$test.call <- list()
@@ -376,7 +397,7 @@ get_test_args <- function(){
   could.copy <- Reduce(intersect, name.vecs)
   mc <- as.list(match.call(pfun, sys.call(s.parent))[-1])
   common.names <- intersect(names(mc), could.copy)
-  possible.uneval <- c("setup","expr")
+  possible.uneval <- c("setup","expr","setup.version")
   uneval.names <- intersect(common.names, possible.uneval)
   eval.names <- setdiff(common.names, possible.uneval)
   p.frame <- parent.frame()
@@ -385,11 +406,11 @@ get_test_args <- function(){
   test.args
 }
 
-atime_test <- function(N, setup, expr, times, seconds.limit, verbose, pkg.edit.fun, result, ...){
+atime_test <- function(N, setup, expr, times, seconds.limit, verbose, pkg.edit.fun, result, setup.version, ...){
   c(get_test_args(), ...)
 }
 
-atime_test_list <- function(N, setup, expr, times, seconds.limit, verbose, pkg.edit.fun, result, tests=NULL, ...){
+atime_test_list <- function(N, setup, expr, times, seconds.limit, verbose, pkg.edit.fun, result, setup.version, tests=NULL, ...){
   common.args <- get_test_args()
   L <- c(tests, list(...))
   inherit_args(L, common.args)

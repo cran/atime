@@ -93,8 +93,7 @@ mult.result <- atime::atime(
     M <- Matrix(m)
   },
   sparse = M %*% w,
-  dense = m %*% w,
-  result=TRUE)
+  dense = m %*% w)
 plot(mult.result)
 
 mult.best <- atime::references_best(mult.result)
@@ -121,8 +120,7 @@ mult.result <- atime::atime(
     M <- Matrix(m)
   },
   sparse = M %*% w,
-  dense = m %*% w,
-  result=TRUE)
+  dense = m %*% w)
 plot(mult.result)
 
 mult.best <- atime::references_best(mult.result)

@@ -8,7 +8,8 @@ atime_versions(
  pkg.path, N, setup, expr, sha.vec=NULL,
  times=10, seconds.limit=0.01, verbose=FALSE,
  pkg.edit.fun=pkg.edit.default, result=FALSE,
- N.env.parent=NULL,
+ N.env.parent=NULL, setup.version=NULL,
+ checkout.path=pkg.path,
  ...)
 }
 \arguments{
@@ -16,8 +17,10 @@ atime_versions(
   \item{N}{numeric vector of data sizes to vary.}
   \item{setup}{
     expression to evaluate for every data size, before timings.
-    In contrast to \code{expr},
-    no replacement of \code{Package::} is performed.
+    If one of the versions contains name HEAD, then
+    \code{Package::} is replaced with
+    \code{Package.SHA_for_HEAD::}
+    (in other words, setup is run using the HEAD commit).
   }
   \item{expr}{
     code with package double-colon prefix, for example
@@ -36,11 +39,18 @@ atime_versions(
     this many seconds, then no timings for larger N are computed.}
   \item{verbose}{logical, print messages after every data size?}
   \item{pkg.edit.fun}{function called to edit package before
-    installation, should typically replace instances of PKG with
-    PKG.SHA, default works with Rcpp packages.}
+    installation, should typically replace instances of \code{PKG} with
+    \code{PKG.SHA},
+    default works with Rcpp packages that have \code{useDynLib(pkg)}
+    in NAMESPACE (no \code{.registration=TRUE}).}
   \item{result}{logical or function, passed to \code{\link{atime}}.}
   \item{N.env.parent}{environment to use as parent of environment
   created for each data size N, or NULL to use default parent env.}
+  \item{setup.version}{expression to evaluate for each version, prior to
+  timings.}
+  \item{checkout.path}{path to repo in which we run git checkout prior
+    to package installation. Default is \code{pkg.path}, but can be set
+    to a sub-directory with a git submodule. }
   \item{\dots}{named versions.}
 }
 \details{
@@ -49,7 +59,7 @@ atime_versions(
   Each version should be either \code{""} (to use currently installed
   version of package, or if missing, install most recent
   version from CRAN) or a SHA1 hash, which is passed as branch
-  arg to \code{git2r::checkout}; version names used to identify/interpret
+  to git checkout; version names used to identify/interpret
   the output/plots.
 }
 \value{list of class atime with elements \code{seconds.limit} (numeric
@@ -68,7 +78,7 @@ if(FALSE){
 
   tdir <- tempfile()
   dir.create(tdir)
-  git2r::clone("https://github.com/tdhock/binsegRcpp", tdir)
+  gert::git_clone("https://github.com/tdhock/binsegRcpp", tdir)
   atime.list <- atime::atime_versions(
     pkg.path=tdir,
     setup={
@@ -85,7 +95,7 @@ if(FALSE){
 
   gdir <- tempfile()
   dir.create(gdir)
-  git2r::clone("https://github.com/tdhock/grates", gdir)
+  gert::git_clone("https://github.com/tdhock/grates", gdir)
   glist <- atime::atime_versions(
     file.path(gdir,"pkg"),
     current = "1aae646888dcedb128c9076d9bd53fcb4075dcda",

@@ -117,6 +117,17 @@ test_that("more units defined in 1 row result", {
   expect_identical(names(unit.tab), c("match.len","seconds"))
 })
 
+test_that("result=FALSE and check=TRUE", {
+  expr.list <- atime::atime_grid(seq=seq(1,N), colon=1:N)
+  alist <- atime::atime(expr.list=expr.list, foo=1)
+  alist$measurements[, expect_identical(result, replicate(.N, NULL))]
+  expect_error({
+    atime::atime(expr.list=expr.list, foo=1, check=TRUE, result=FALSE)
+  }, "`seq` does not equal `foo`", fixed=TRUE)
+  alist <- atime::atime(expr.list=expr.list, check=TRUE, result=FALSE)
+  alist$measurements[, expect_identical(result, replicate(.N, NULL))]
+})
+
 test_that("result returned when some are NULL and others not", {
   atime.list <- atime::atime(
     N=10^seq(-3, 0),
@@ -129,6 +140,19 @@ test_that("result returned when some are NULL and others not", {
     result = TRUE,
     fast=NULL)
   expect_is(atime.list$mea$result, "list")
+})
+
+test_that("N with different units", {
+  atime.list <- atime::atime(
+    slow=if(N==2){
+      data.frame(x=1)
+    }else if(N==4){
+      data.frame(y=2)
+    }else data.frame(x=3, y=4),
+    result = TRUE)
+  expected.dt <- data.table(x=c(1,NA,3), y=c(NA,2,4))
+  computed.dt <- atime.list$mea[1:3, .(x,y)]
+  expect_equal(computed.dt, expected.dt)
 })
 
 test_that("sensible error when duplicate names", {
@@ -289,7 +313,7 @@ test_that("errors for predict method", {
   }, "argument names should be unique, problem(count): foo(3), kilobytes(2)", fixed=TRUE)
 })
 
-test_that("atime_versions_exprs error when called with setup", {
+test_that("atime_versions_exprs error when called with N", {
   expect_error({
     atime::atime_versions_exprs(
       pkg.path="~/R/data.table",
@@ -304,7 +328,7 @@ test_that("atime_versions_exprs error when called with setup", {
       "Before"="be2f72e6f5c90622fe72e1c315ca05769a9dc854",
       "Regression"="e793f53466d99f86e70fc2611b708ae8c601a451", 
       "Fixed"="58409197426ced4714af842650b0cc3b9e2cb842") 
-  }, "each ... argument value and sha.vec element must be a string (package version, length=1, not NA), problems: N, setup", fixed=TRUE)
+  }, "each ... argument value and sha.vec element must be a string (package version, length=1, not NA), problems: N", fixed=TRUE)
 })
 
 test_that("atime_versions_exprs error when sha.vec element not string", {
@@ -426,37 +450,21 @@ if(requireNamespace("ggplot2"))test_that("references for non-NA unit, with NA un
   expect_identical(sort(names(rtab)), c("linear","quadratic"))
 })
 
-test_that("error for result data frames with different column names",{
-  expect_error({
-    atime::atime(
-      missing=data.frame(my_unit=NA),
-      constant=data.frame(foo=1),
-      linear=data.frame(my_unit=N),
-      quadratic=data.frame(my_unit=N^2),
-      seconds.limit=0.001,
-      result=TRUE)
-  }, "results are all 1 row data frames, but some have different names (missing, constant); please fix by making column names of results identical", fixed=TRUE)
-  expect_error({
-    atime:::get_result_rows(list(
-      missing=data.frame(my_unit=NA),
-      linear=data.frame(my_unit=5),
-      quadratic=data.frame(my_unit=1, other=2)))
-  }, "results are all 1 row data frames, but some have different names (missing, quadratic); please fix by making column names of results identical", fixed=TRUE)
-  expect_null(
-    atime:::get_result_rows(list(
-      missing=data.frame(my_unit=NA),
-      linear=data.frame(my_unit=5),
-      quadratic=data.frame(my_unit=1, other=2:3)))
-  )
-  valid.input.list <- list(
-    missing=data.frame(my_unit=NA, other="a"),
-    linear=data.frame(my_unit=5, other="b"),
-    quadratic=data.frame(my_unit=1, other="c"))
-  computed <- atime:::get_result_rows(valid.input.list)
-  expected <- list(
-    result.rows=do.call(rbind, valid.input.list),
-    more.units="my_unit")
-  expect_identical(computed, expected)
+test_that("result data frames with different column names",{
+  alist <- atime::atime(
+    N=1:2,
+    two.rows=data.frame(x=1:2),
+    list=list(y=1),
+    missing=data.frame(my_unit=NA),
+    constant=data.frame(foo=1),
+    linear=data.frame(my_unit=N),
+    quadratic=data.frame(my_unit=N^2),
+    seconds.limit=0.001)
+  mrow <- alist$measurements[N==2]
+  expect_null(mrow[["x"]])
+  expect_null(mrow[["y"]])
+  expect_equal(mrow[["my_unit"]], c(NA,NA,NA,NA,2,4))
+  expect_equal(mrow[["foo"]], c(NA,NA,NA,1,NA,NA))
 })
 
 test_that("error for new unit name conflicting with existing", {
@@ -468,7 +476,7 @@ test_that("error for new unit name conflicting with existing", {
       quadratic=data.frame(median=N^2, kilobytes=1, ok=2),
       seconds.limit=0.001,
       result=TRUE)
-  }, "value of expression is 1 row data frame with column(s) named median, kilobytes (reserved for internal use); please fix by changing the column name(s) in your results", fixed=TRUE)
+  }, "value of expression missing is 1 row data frame with column(s) named median, kilobytes (reserved for internal use); please fix by changing the column name(s) in your results", fixed=TRUE)
 })
 
 test_that("atime_test outputs historical versions", {
